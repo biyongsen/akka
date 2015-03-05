@@ -64,8 +64,11 @@ object OperationAttributes {
 
   /**
    * Specifies the name of the operation.
+   * If the name is null or empty the name is ignored, i.e. [[#none]] is returned.
    */
-  def name(name: String): OperationAttributes = OperationAttributes(Name(name))
+  def name(name: String): OperationAttributes =
+    if (name == null || name.isEmpty) none
+    else OperationAttributes(Name(name))
 
   /**
    * Specifies the initial and maximum size of the input buffer.

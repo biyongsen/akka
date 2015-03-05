@@ -46,8 +46,19 @@ object Source {
    * be used to externally trigger completion, which the source then signalls
    * to its downstream.
    */
-  def lazyEmpty[T](): Source[T, Promise[Unit]] =
-    new Source[T, Promise[Unit]](scaladsl.Source.lazyEmpty())
+  def lazyEmpty[T](): Source[T, Promise[Unit]] = lazyEmpty(name = "")
+
+  /**
+   * Create a `Source` with no elements, which does not complete its downstream,
+   * until externally triggered to do so.
+   *
+   * It materializes a [[scala.concurrent.Promise]] which will be completed
+   * when the downstream stage of this source cancels. This promise can also
+   * be used to externally trigger completion, which the source then signalls
+   * to its downstream.
+   */
+  def lazyEmpty[T](name: String): Source[T, Promise[Unit]] =
+    new Source[T, Promise[Unit]](scaladsl.Source.lazyEmpty(name))
 
   /**
    * Helper to create [[Source]] from `Publisher`.
@@ -57,8 +68,18 @@ object Source {
    * that mediate the flow of elements downstream and the propagation of
    * back-pressure upstream.
    */
-  def from[O](publisher: Publisher[O]): javadsl.Source[O, Unit] =
-    new Source(scaladsl.Source.apply(publisher))
+  def from[O](publisher: Publisher[O]): javadsl.Source[O, Unit] = from(publisher, name = "")
+
+  /**
+   * Helper to create [[Source]] from `Publisher`.
+   *
+   * Construct a transformation starting with given publisher. The transformation steps
+   * are executed by a series of [[org.reactivestreams.Processor]] instances
+   * that mediate the flow of elements downstream and the propagation of
+   * back-pressure upstream.
+   */
+  def from[O](publisher: Publisher[O], name: String): javadsl.Source[O, Unit] =
+    new Source(scaladsl.Source.apply(publisher, name))
 
   /**
    * Helper to create [[Source]] from `Iterator`.
@@ -69,7 +90,7 @@ object Source {
    * data.add(1);
    * data.add(2);
    * data.add(3);
-   * Source.from(data.iterator());
+   * Source.from(() -> data.iterator());
    * }}}
    *
    * Start a new `Source` from the given Iterator. The produced stream of elements
@@ -79,6 +100,27 @@ object Source {
    * steps.
    */
   def fromIterator[O](f: japi.Creator[java.util.Iterator[O]]): javadsl.Source[O, Unit] =
+    fromIterator(f, name = "")
+
+  /**
+   * Helper to create [[Source]] from `Iterator`.
+   * Example usage:
+   *
+   * {{{
+   * List<Integer> data = new ArrayList<Integer>();
+   * data.add(1);
+   * data.add(2);
+   * data.add(3);
+   * Source.from(() -> data.iterator());
+   * }}}
+   *
+   * Start a new `Source` from the given Iterator. The produced stream of elements
+   * will continue until the iterator runs empty or fails during evaluation of
+   * the `next()` method. Elements are pulled out of the iterator
+   * in accordance with the demand coming from the downstream transformation
+   * steps.
+   */
+  def fromIterator[O](f: japi.Creator[java.util.Iterator[O]], name: String): javadsl.Source[O, Unit] =
     new Source(scaladsl.Source(() ⇒ f.create().asScala))
 
   /**
@@ -97,8 +139,26 @@ object Source {
    * stream will see an individual flow of elements (always starting from the
    * beginning) regardless of when they subscribed.
    */
-  def from[O](iterable: java.lang.Iterable[O]): javadsl.Source[O, Unit] =
-    new Source(scaladsl.Source(akka.stream.javadsl.japi.Util.immutableIterable(iterable)))
+  def from[O](iterable: java.lang.Iterable[O]): javadsl.Source[O, Unit] = from(iterable, name = "")
+
+  /**
+   * Helper to create [[Source]] from `Iterable`.
+   * Example usage:
+   * {{{
+   * List<Integer> data = new ArrayList<Integer>();
+   * data.add(1);
+   * data.add(2);
+   * data.add(3);
+   * Source.fom(data);
+   * }}}
+   *
+   * Starts a new `Source` from the given `Iterable`. This is like starting from an
+   * Iterator, but every Subscriber directly attached to the Publisher of this
+   * stream will see an individual flow of elements (always starting from the
+   * beginning) regardless of when they subscribed.
+   */
+  def from[O](iterable: java.lang.Iterable[O], name: String): javadsl.Source[O, Unit] =
+    new Source(scaladsl.Source(akka.stream.javadsl.japi.Util.immutableIterable(iterable), name))
 
   /**
    * Start a new `Source` from the given `Future`. The stream will consist of
@@ -106,8 +166,16 @@ object Source {
    * may happen before or after materializing the `Flow`.
    * The stream terminates with a failure if the `Future` is completed with a failure.
    */
-  def from[O](future: Future[O]): javadsl.Source[O, Unit] =
-    new Source(scaladsl.Source(future))
+  def from[O](future: Future[O]): javadsl.Source[O, Unit] = from(future, name = "")
+
+  /**
+   * Start a new `Source` from the given `Future`. The stream will consist of
+   * one element when the `Future` is completed with a successful value, which
+   * may happen before or after materializing the `Flow`.
+   * The stream terminates with a failure if the `Future` is completed with a failure.
+   */
+  def from[O](future: Future[O], name: String): javadsl.Source[O, Unit] =
+    new Source(scaladsl.Source(future, name))
 
   /**
    * Elements are emitted periodically with the specified interval.
@@ -117,40 +185,78 @@ object Source {
    * receive new tick elements as soon as it has requested more elements.
    */
   def from[O](initialDelay: FiniteDuration, interval: FiniteDuration, tick: O): javadsl.Source[O, Cancellable] =
-    new Source(scaladsl.Source(initialDelay, interval, tick))
+    from(initialDelay, interval, tick, name = "")
+
+  /**
+   * Elements are emitted periodically with the specified interval.
+   * The tick element will be delivered to downstream consumers that has requested any elements.
+   * If a consumer has not requested any elements at the point in time when the tick
+   * element is produced it will not receive that tick element later. It will
+   * receive new tick elements as soon as it has requested more elements.
+   */
+  def from[O](initialDelay: FiniteDuration, interval: FiniteDuration, tick: O, name: String): javadsl.Source[O, Cancellable] =
+    new Source(scaladsl.Source(initialDelay, interval, tick, name))
 
   /**
    * Creates a `Source` that is materialized to an [[akka.actor.ActorRef]] which points to an Actor
    * created according to the passed in [[akka.actor.Props]]. Actor created by the `props` should
    * be [[akka.stream.actor.ActorPublisher]].
    */
-  def from[T](props: Props): Source[T, ActorRef] =
-    new Source(scaladsl.Source.apply(props))
+  def from[T](props: Props): Source[T, ActorRef] = from(props, name = "")
+
+  /**
+   * Creates a `Source` that is materialized to an [[akka.actor.ActorRef]] which points to an Actor
+   * created according to the passed in [[akka.actor.Props]]. Actor created by the `props` should
+   * be [[akka.stream.actor.ActorPublisher]].
+   */
+  def from[T](props: Props, name: String): Source[T, ActorRef] =
+    new Source(scaladsl.Source.apply(props, name))
 
   /**
    * Create a `Source` with one element.
    * Every connected `Sink` of this stream will see an individual stream consisting of one element.
    */
-  def single[T](element: T): Source[T, Unit] =
+  def single[T](element: T): Source[T, Unit] = single(element, name = "")
+
+  /**
+   * Create a `Source` with one element.
+   * Every connected `Sink` of this stream will see an individual stream consisting of one element.
+   */
+  def single[T](element: T, name: String): Source[T, Unit] =
     new Source(scaladsl.Source.single(element))
 
   /**
    * Create a `Source` that will continually emit the given element.
    */
-  def repeat[T](element: T): Source[T, Unit] =
-    new Source(scaladsl.Source.repeat(element))
+  def repeat[T](element: T): Source[T, Unit] = repeat(element, name = "")
+
+  /**
+   * Create a `Source` that will continually emit the given element.
+   */
+  def repeat[T](element: T, name: String): Source[T, Unit] =
+    new Source(scaladsl.Source.repeat(element, name))
 
   /**
    * Create a `Source` that immediately ends the stream with the `cause` failure to every connected `Sink`.
    */
-  def failed[T](cause: Throwable): Source[T, Unit] =
-    new Source(scaladsl.Source.failed(cause))
+  def failed[T](cause: Throwable): Source[T, Unit] = failed(cause, name = "")
+
+  /**
+   * Create a `Source` that immediately ends the stream with the `cause` failure to every connected `Sink`.
+   */
+  def failed[T](cause: Throwable, name: String): Source[T, Unit] =
+    new Source(scaladsl.Source.failed(cause, name))
 
   /**
    * Creates a `Source` that is materialized as a [[org.reactivestreams.Subscriber]]
    */
-  def subscriber[T](): Source[T, Subscriber[T]] =
-    new Source(scaladsl.Source.subscriber())
+  def subscriber[T](): Source[T, Subscriber[T]] = subscriber(name = "")
+
+  /**
+   * Creates a `Source` that is materialized as a [[org.reactivestreams.Subscriber]]
+   */
+  def subscriber[T](name: String): Source[T, Subscriber[T]] =
+    new Source(scaladsl.Source.subscriber(name))
 
   /**
    * Concatenates two sources so that the first element

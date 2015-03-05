@@ -42,7 +42,10 @@ object Sink extends SinkApply {
 
   import OperationAttributes.{ none, name ⇒ named }
 
-  private def shape[T](name: String): SinkShape[T] = SinkShape(new Inlet(name + ".in"))
+  private def shape[T](name: String, defaultName: String): SinkShape[T] = {
+    val name2 = if (name == null || name.isEmpty) defaultName else name
+    SinkShape(new Inlet(name2 + ".in"))
+  }
 
   /**
    * A graph with the shape of a source logically is a source, this method makes
@@ -53,82 +56,81 @@ object Sink extends SinkApply {
   /**
    * Helper to create [[Sink]] from `Subscriber`.
    */
-  def apply[T](subscriber: Subscriber[T]): Sink[T, Unit] = new Sink(new SubscriberSink(subscriber, none, shape("SubscriberSink")))
+  def apply[T](subscriber: Subscriber[T]): Sink[T, Unit] = apply(subscriber, name = "")
 
   /**
    * Helper to create [[Sink]] from `Subscriber`.
    */
-  def apply[T](subscriber: Subscriber[T], name: String): Sink[T, Unit] = new Sink(new SubscriberSink(subscriber, named(name), shape(name)))
+  def apply[T](subscriber: Subscriber[T], name: String): Sink[T, Unit] =
+    new Sink(new SubscriberSink(subscriber, named(name), shape(name, "SubscriberSink")))
 
   /**
    * Creates a `Sink` that is materialized to an [[akka.actor.ActorRef]] which points to an Actor
    * created according to the passed in [[akka.actor.Props]]. Actor created by the `props` should
    * be [[akka.stream.actor.ActorSubscriber]].
    */
-  def apply[T](props: Props): Sink[T, ActorRef] = new Sink(new PropsSink(props, none, shape("PropsSink")))
+  def apply[T](props: Props): Sink[T, ActorRef] = apply(props, name = "")
 
   /**
    * Creates a `Sink` that is materialized to an [[akka.actor.ActorRef]] which points to an Actor
    * created according to the passed in [[akka.actor.Props]]. Actor created by the `props` should
    * be [[akka.stream.actor.ActorSubscriber]].
    */
-  def apply[T](props: Props, name: String): Sink[T, ActorRef] = new Sink(new PropsSink(props, named(name), shape(name)))
+  def apply[T](props: Props, name: String): Sink[T, ActorRef] =
+    new Sink(new PropsSink(props, named(name), shape(name, "PropsSink")))
 
   /**
    * A `Sink` that immediately cancels its upstream after materialization.
    */
-  def cancelled[T](): Sink[T, Unit] = new Sink[Any, Unit](new CancelSink(none, shape("CancelledSink")))
+  def cancelled[T](): Sink[T, Unit] = cancelled(name = "")
 
   /**
    * A `Sink` that immediately cancels its upstream after materialization.
    */
-  def cancelled[T](name: String): Sink[T, Unit] = new Sink[Any, Unit](new CancelSink(named(name), shape(name)))
+  def cancelled[T](name: String): Sink[T, Unit] =
+    new Sink[Any, Unit](new CancelSink(named(name), shape(name, "CancelledSink")))
 
   /**
    * A `Sink` that materializes into a `Future` of the first value received.
    */
-  def head[T](): Sink[T, Future[T]] = new Sink(new HeadSink[T](none, shape("HeadSink")))
+  def head[T](): Sink[T, Future[T]] = head(name = "")
 
   /**
    * A `Sink` that materializes into a `Future` of the first value received.
    */
-  def head[T](name: String): Sink[T, Future[T]] = new Sink(new HeadSink[T](named(name), shape(name)))
+  def head[T](name: String): Sink[T, Future[T]] =
+    new Sink(new HeadSink[T](named(name), shape(name, "HeadSink")))
 
   /**
    * A `Sink` that materializes into a [[org.reactivestreams.Publisher]].
    * that can handle one [[org.reactivestreams.Subscriber]].
    */
-  def publisher[T](): Sink[T, Publisher[T]] = new Sink(new PublisherSink[T](none, shape("PublisherSink")))
+  def publisher[T](): Sink[T, Publisher[T]] = publisher(name = "")
 
   /**
    * A `Sink` that materializes into a [[org.reactivestreams.Publisher]].
    * that can handle one [[org.reactivestreams.Subscriber]].
    */
-  def publisher[T](name: String): Sink[T, Publisher[T]] = new Sink(new PublisherSink[T](named(name), shape(name)))
+  def publisher[T](name: String): Sink[T, Publisher[T]] =
+    new Sink(new PublisherSink[T](named(name), shape(name, "PublisherSink")))
 
   /**
    * A `Sink` that materializes into a [[org.reactivestreams.Publisher]]
    * that can handle more than one [[org.reactivestreams.Subscriber]].
    */
-  def fanoutPublisher[T](initialBufferSize: Int, maximumBufferSize: Int): Sink[T, Publisher[T]] =
-    new Sink(new FanoutPublisherSink[T](initialBufferSize, maximumBufferSize, none, shape("FanoutPublisherSink")))
-
-  /**
-   * A `Sink` that materializes into a [[org.reactivestreams.Publisher]]
-   * that can handle more than one [[org.reactivestreams.Subscriber]].
-   */
-  def fanoutPublisher[T](initialBufferSize: Int, maximumBufferSize: Int, name: String): Sink[T, Publisher[T]] =
-    new Sink(new FanoutPublisherSink[T](initialBufferSize, maximumBufferSize, named(name), shape(name)))
+  def fanoutPublisher[T](initialBufferSize: Int, maximumBufferSize: Int, name: String = ""): Sink[T, Publisher[T]] =
+    new Sink(new FanoutPublisherSink[T](initialBufferSize, maximumBufferSize, named(name), shape(name, "FanoutPublisherSink")))
 
   /**
    * A `Sink` that will consume the stream and discard the elements.
    */
-  def ignore(): Sink[Any, Unit] = new Sink(new BlackholeSink(none, shape("BlackholeSink")))
+  def ignore(): Sink[Any, Unit] = ignore(name = "")
 
   /**
    * A `Sink` that will consume the stream and discard the elements.
    */
-  def ignore(name: String): Sink[Any, Unit] = new Sink(new BlackholeSink(named(name), shape(name)))
+  def ignore(name: String): Sink[Any, Unit] =
+    new Sink(new BlackholeSink(named(name), shape(name, "BlackholeSink")))
 
   /**
    * A `Sink` that will invoke the given procedure for each received element. The sink is materialized
@@ -136,7 +138,7 @@ object Sink extends SinkApply {
    * normal end of the stream, or completed with `Failure` if there is a failure signaled in
    * the stream..
    */
-  def foreach[T](f: T ⇒ Unit): Sink[T, Future[Unit]] = {
+  def foreach[T](f: T ⇒ Unit, name: String = ""): Sink[T, Future[Unit]] = {
 
     def newForeachStage(): (PushStage[T, Unit], Future[Unit]) = {
       val promise = Promise[Unit]()
@@ -159,7 +161,7 @@ object Sink extends SinkApply {
       (stage, promise.future)
     }
 
-    Flow[T].transformMaterializing(newForeachStage).to(Sink.ignore).withAttributes(name("foreach"))
+    Flow[T].transformMaterializing(newForeachStage).to(Sink.ignore).withAttributes(named(name))
 
   }
 
@@ -170,7 +172,7 @@ object Sink extends SinkApply {
    * function evaluation when the input stream ends, or completed with `Failure`
    * if there is a failure signaled in the stream.
    */
-  def fold[U, T](zero: U)(f: (U, T) ⇒ U): Sink[T, Future[U]] = {
+  def fold[U, T](zero: U, name: String = "")(f: (U, T) ⇒ U): Sink[T, Future[U]] = {
 
     def newFoldStage(): (PushStage[T, U], Future[U]) = {
       val promise = Promise[U]()
@@ -197,7 +199,7 @@ object Sink extends SinkApply {
       (stage, promise.future)
     }
 
-    Flow[T].transformMaterializing(newFoldStage).to(Sink.ignore).withAttributes(name("fold"))
+    Flow[T].transformMaterializing(newFoldStage).to(Sink.ignore).withAttributes(named(name))
 
   }
 
@@ -206,7 +208,7 @@ object Sink extends SinkApply {
    * completion, apply the provided function with [[scala.util.Success]]
    * or [[scala.util.Failure]].
    */
-  def onComplete[T](callback: Try[Unit] ⇒ Unit): Sink[T, Unit] = {
+  def onComplete[T](callback: Try[Unit] ⇒ Unit, name: String = ""): Sink[T, Unit] = {
 
     def newOnCompleteStage(): PushStage[T, Unit] = {
       new PushStage[T, Unit] {
@@ -222,6 +224,6 @@ object Sink extends SinkApply {
       }
     }
 
-    Flow[T].transform(newOnCompleteStage).to(Sink.ignore).withAttributes(name("onComplete"))
+    Flow[T].transform(newOnCompleteStage).to(Sink.ignore).withAttributes(named(name))
   }
 }

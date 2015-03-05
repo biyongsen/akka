@@ -12,6 +12,7 @@ import org.reactivestreams.Publisher
 import org.reactivestreams.Subscriber
 import scala.concurrent.Future
 import akka.stream.impl.StreamLayout
+import scala.util.Try
 
 /** Java API */
 object Sink {
@@ -32,12 +33,27 @@ object Sink {
    * if there is a failure is signaled in the stream.
    */
   def fold[U, In](zero: U, f: japi.Function2[U, In, U]): javadsl.Sink[In, Future[U]] =
-    new Sink(scaladsl.Sink.fold[U, In](zero)(f.apply))
+    fold(zero, name = "", f)
+
+  /**
+   * A `Sink` that will invoke the given function for every received element, giving it its previous
+   * output (or the given `zero` value) and the element as input.
+   * The returned [[scala.concurrent.Future]] will be completed with value of the final
+   * function evaluation when the input stream ends, or completed with `Failure`
+   * if there is a failure is signaled in the stream.
+   */
+  def fold[U, In](zero: U, name: String, f: japi.Function2[U, In, U]): javadsl.Sink[In, Future[U]] =
+    new Sink(scaladsl.Sink.fold[U, In](zero, name)(f.apply))
 
   /**
    * Helper to create [[Sink]] from `Subscriber`.
    */
-  def create[In](subs: Subscriber[In]): Sink[In, Unit] =
+  def create[In](subs: Subscriber[In]): Sink[In, Unit] = create(subs, name = "")
+
+  /**
+   * Helper to create [[Sink]] from `Subscriber`.
+   */
+  def create[In](subs: Subscriber[In], name: String): Sink[In, Unit] =
     new Sink(scaladsl.Sink(subs))
 
   /**
@@ -45,27 +61,50 @@ object Sink {
    * created according to the passed in [[akka.actor.Props]]. Actor created by the `props` should
    * be [[akka.stream.actor.ActorSubscriber]].
    */
-  def create[T](props: Props): Sink[T, ActorRef] =
-    new Sink(scaladsl.Sink.apply(props))
+  def create[T](props: Props): Sink[T, ActorRef] = create(props, name = "")
+
+  /**
+   * Creates a `Sink` that is materialized to an [[akka.actor.ActorRef]] which points to an Actor
+   * created according to the passed in [[akka.actor.Props]]. Actor created by the `props` should
+   * be [[akka.stream.actor.ActorSubscriber]].
+   */
+  def create[T](props: Props, name: String): Sink[T, ActorRef] =
+    new Sink(scaladsl.Sink.apply(props, name))
 
   /**
    * A `Sink` that immediately cancels its upstream after materialization.
    */
-  def cancelled[T]: Sink[T, Unit] =
-    new Sink(scaladsl.Sink.cancelled)
+  def cancelled[T]: Sink[T, Unit] = cancelled(name = "")
+
+  /**
+   * A `Sink` that immediately cancels its upstream after materialization.
+   */
+  def cancelled[T](name: String): Sink[T, Unit] =
+    new Sink(scaladsl.Sink.cancelled(name))
 
   /**
    * A `Sink` that will consume the stream and discard the elements.
    */
-  def ignore[T](): Sink[T, Unit] =
-    new Sink(scaladsl.Sink.ignore)
+  def ignore[T](): Sink[T, Unit] = ignore(name = "")
+
+  /**
+   * A `Sink` that will consume the stream and discard the elements.
+   */
+  def ignore[T](name: String): Sink[T, Unit] =
+    new Sink(scaladsl.Sink.ignore(name))
 
   /**
    * A `Sink` that materializes into a [[org.reactivestreams.Publisher]].
    * that can handle one [[org.reactivestreams.Subscriber]].
    */
-  def publisher[In](): Sink[In, Publisher[In]] =
-    new Sink(scaladsl.Sink.publisher())
+  def publisher[In](): Sink[In, Publisher[In]] = publisher(name = "")
+
+  /**
+   * A `Sink` that materializes into a [[org.reactivestreams.Publisher]].
+   * that can handle one [[org.reactivestreams.Subscriber]].
+   */
+  def publisher[In](name: String): Sink[In, Publisher[In]] =
+    new Sink(scaladsl.Sink.publisher(name))
 
   /**
    * A `Sink` that will invoke the given procedure for each received element. The sink is materialized
@@ -73,29 +112,57 @@ object Sink {
    * normal end of the stream, or completed with `Failure` if there is a failure is signaled in
    * the stream..
    */
-  def foreach[T](f: japi.Procedure[T]): Sink[T, Future[Unit]] =
-    new Sink(scaladsl.Sink.foreach(f.apply))
+  def foreach[T](f: japi.Procedure[T]): Sink[T, Future[Unit]] = foreach(f, name = "")
+
+  /**
+   * A `Sink` that will invoke the given procedure for each received element. The sink is materialized
+   * into a [[scala.concurrent.Future]] will be completed with `Success` when reaching the
+   * normal end of the stream, or completed with `Failure` if there is a failure is signaled in
+   * the stream..
+   */
+  def foreach[T](f: japi.Procedure[T], name: String): Sink[T, Future[Unit]] =
+    new Sink(scaladsl.Sink.foreach(f.apply, name))
 
   /**
    * A `Sink` that materializes into a [[org.reactivestreams.Publisher]]
    * that can handle more than one [[org.reactivestreams.Subscriber]].
    */
   def fanoutPublisher[T](initialBufferSize: Int, maximumBufferSize: Int): Sink[T, Publisher[T]] =
-    new Sink(scaladsl.Sink.fanoutPublisher(initialBufferSize, maximumBufferSize))
+    fanoutPublisher(initialBufferSize, maximumBufferSize, name = "")
+
+  /**
+   * A `Sink` that materializes into a [[org.reactivestreams.Publisher]]
+   * that can handle more than one [[org.reactivestreams.Subscriber]].
+   */
+  def fanoutPublisher[T](initialBufferSize: Int, maximumBufferSize: Int, name: String): Sink[T, Publisher[T]] =
+    new Sink(scaladsl.Sink.fanoutPublisher(initialBufferSize, maximumBufferSize, name))
 
   /**
    * A `Sink` that when the flow is completed, either through a failure or normal
    * completion, apply the provided function with [[scala.util.Success]]
    * or [[scala.util.Failure]].
    */
-  def onComplete[In](onComplete: japi.Procedure[Unit]): Sink[In, Unit] =
-    new Sink(scaladsl.Sink.onComplete[In](x ⇒ onComplete.apply(x)))
+  def onComplete[In](callback: japi.Procedure[Try[Unit]]): Sink[In, Unit] =
+    onComplete(callback, name = "")
+
+  /**
+   * A `Sink` that when the flow is completed, either through a failure or normal
+   * completion, apply the provided function with [[scala.util.Success]]
+   * or [[scala.util.Failure]].
+   */
+  def onComplete[In](callback: japi.Procedure[Try[Unit]], name: String): Sink[In, Unit] =
+    new Sink(scaladsl.Sink.onComplete[In](x ⇒ callback.apply(x), name))
 
   /**
    * A `Sink` that materializes into a `Future` of the first value received.
    */
-  def head[In]: Sink[In, Future[In]] =
-    new Sink(scaladsl.Sink.head[In])
+  def head[In]: Sink[In, Future[In]] = head(name = "")
+
+  /**
+   * A `Sink` that materializes into a `Future` of the first value received.
+   */
+  def head[In](name: String): Sink[In, Future[In]] =
+    new Sink(scaladsl.Sink.head[In](name))
 
 }
 
